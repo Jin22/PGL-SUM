@@ -11,7 +11,7 @@ import json
 import argparse
 
 
-def inference(model, data_path, keys, eval_method):
+def inference(model, data_path, keys, eval_method, writer, epoch_i):
     """ Used to inference a pretrained `model` on the `keys` test videos, based on the `eval_method` criterion; using
         the dataset located in `data_path'.
 
@@ -38,7 +38,8 @@ def inference(model, data_path, keys, eval_method):
             summary = generate_summary([sb], [scores], [n_frames], [positions])[0]
             f_score = evaluate_summary(summary, user_summary, eval_method)
             video_fscores.append(f_score)
-    print(f"Trained for split: {split_id} achieved an F-score of {np.mean(video_fscores):.2f}%")
+    writer.update_loss(np.mean(video_fscores), epoch_i, 'F-score_epoch')
+    #print(f"Trained for split: {split_id} achieved an F-score of {np.mean(video_fscores):.2f}%")
 
 
 if __name__ == "__main__":
@@ -64,7 +65,7 @@ if __name__ == "__main__":
             test_keys = data[split_id]["test_keys"]
 
         # Dataset path
-        dataset_path = f"../PGL-SUM/data/{dataset}/eccv16_dataset_{dataset.lower()}_google_pool5.h5"
+        dataset_path = f"../PGL-SUM/data/datasets/{dataset}/eccv16_dataset_{dataset.lower()}_google_pool5.h5"
 
         # Create model with paper reported configuration
         trained_model = PGL_SUM(input_size=1024, output_size=1024, num_segments=4, heads=8,

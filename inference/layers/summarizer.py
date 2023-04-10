@@ -47,8 +47,7 @@ class MultiAttention(nn.Module):
             weighted_value: Tensor with shape [T, input_size] containing the weighted frame features.
             attn_weights: Tensor with shape [T, T] containing the attention weights.
         """
-        weighted_value, attn_weights = self.attention(x)  # global attention
-
+        weighted_value, attn_weights = self.attention(x)  # global attention    
         if self.num_segments is not None and self.fusion is not None:
             segment_size = math.ceil(x.shape[0] / self.num_segments)
             for segment in range(self.num_segments):

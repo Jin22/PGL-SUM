@@ -11,13 +11,17 @@ from tqdm import tqdm, trange
 from layers.summarizer import PGL_SUM
 from utils import TensorboardWriter
 
+from os.path import isfile, join
+from inference import inference
+from generate_summary import generate_summary
+from evaluation_metrics import evaluate_summary
+from os import listdir
 
 class Solver(object):
     def __init__(self, config=None, train_loader=None, test_loader=None):
         """Class that Builds, Trains and Evaluates PGL-SUM model"""
         # Initialize variables to None, to be safe
         self.model, self.optimizer, self.writer = None, None, None
-
         self.config = config
         self.train_loader = train_loader
         self.test_loader = test_loader
@@ -45,6 +49,7 @@ class Solver(object):
             # Optimizer initialization
             self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.lr, weight_decay=self.config.l2_req)
             self.writer = TensorboardWriter(str(self.config.log_dir))
+            
 
     @staticmethod
     def init_weights(net, init_type="xavier", init_gain=1.4142):
@@ -114,11 +119,31 @@ class Solver(object):
             # Uncomment to save parameters at checkpoint
             if not os.path.exists(self.config.save_dir):
                 os.makedirs(self.config.save_dir)
-            # ckpt_path = str(self.config.save_dir) + f'/epoch-{epoch_i}.pkl'
-            # tqdm.write(f'Save parameters at {ckpt_path}')
-            # torch.save(self.model.state_dict(), ckpt_path)
+            ckpt_path = str(self.config.save_dir) + f'/epoch-{epoch_i}.pt'
+            tqdm.write(f'Save parameters at {ckpt_path}')
+            torch.save(self.model.state_dict(), ckpt_path)
 
+            # Model data
+            model_path = f"../PGL-SUM/Summaries/PGL-SUM/exp1/{self.config.video_type}/models/split{self.config.split_index}"
+            model_file = sorted([f for f in listdir(model_path)])
+            eval_metric = 'avg' if self.config.video_type.lower() == 'tvsum' else 'max'
+            # Read current split
+            split_file = f"../PGL-SUM/data/datasets/splits/{self.config.video_type.lower()}_splits.json"
+            with open(split_file) as f:
+                data = json.loads(f.read())
+                test_keys = data[self.config.split_index]["test_keys"]
+            # Dataset path
+            dataset_path = f"../PGL-SUM/data/datasets/{self.config.video_type}/eccv16_dataset_{self.config.video_type.lower()}_google_pool5.h5"
+            trained_model = PGL_SUM(input_size=1024, output_size=1024, num_segments=4, heads=8,
+                                fusion="add", pos_enc="absolute")
+            trained_model.load_state_dict(torch.load(join(model_path, model_file[-1])))
+            os.remove(join(model_path, model_file[-1]))
+            inference(trained_model, dataset_path, test_keys, eval_metric, self.writer, epoch_i)
+            
             self.evaluate(epoch_i)
+
+            
+
 
     def evaluate(self, epoch_i, save_weights=False):
         """ Saves the frame's importance scores for the test videos in json format.
