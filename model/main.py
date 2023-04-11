@@ -19,4 +19,6 @@ if __name__ == '__main__':
     solver.build()
     solver.evaluate(-1)	 # evaluates the summaries using the initial random weights of the network
     solver.train()
+
+# Validation git push demo
 # tensorboard --logdir '../PGL-SUM/Summaries/PGL-SUM/'
