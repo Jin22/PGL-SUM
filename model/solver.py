@@ -11,11 +11,8 @@ from tqdm import tqdm, trange
 from layers.summarizer import PGL_SUM
 from utils import TensorboardWriter
 
-from os.path import isfile, join
-from inference import inference
 from generate_summary import generate_summary
 from evaluation_metrics import evaluate_summary
-from os import listdir
 
 class Solver(object):
     def __init__(self, config=None, train_loader=None, test_loader=None):
@@ -78,6 +75,7 @@ class Solver(object):
 
     def train(self):
         """ Main function to train the PGL-SUM model. """
+        max_f_score = -1
         for epoch_i in trange(self.config.n_epochs, desc='Epoch', ncols=80):
             self.model.train()
 
@@ -91,7 +89,7 @@ class Solver(object):
 
                 self.optimizer.zero_grad()
                 for _ in trange(self.config.batch_size, desc='Video', ncols=80, leave=False):
-                    frame_features, target = next(iterator)
+                    frame_features, target, _, _, _, _ = next(iterator)
 
                     frame_features = frame_features.to(self.config.device)
                     target = target.to(self.config.device)
@@ -117,30 +115,34 @@ class Solver(object):
 
             self.writer.update_loss(loss, epoch_i, 'loss_epoch')
             # Uncomment to save parameters at checkpoint
-            if not os.path.exists(self.config.save_dir):
-                os.makedirs(self.config.save_dir)
-            ckpt_path = str(self.config.save_dir) + f'/epoch-{epoch_i}.pt'
-            tqdm.write(f'Save parameters at {ckpt_path}')
-            torch.save(self.model.state_dict(), ckpt_path)
+            # if not os.path.exists(self.config.save_dir):
+            #     os.makedirs(self.config.save_dir)
+            # ckpt_path = str(self.config.save_dir) + f'/epoch-{epoch_i}.pt'
+            # tqdm.write(f'Save parameters at {ckpt_path}')
+            # torch.save(self.model.state_dict(), ckpt_path)
 
-            # Model data
-            model_path = f"../PGL-SUM/Summaries/PGL-SUM/exp1/{self.config.video_type}/models/split{self.config.split_index}"
-            model_file = sorted([f for f in listdir(model_path)])
-            eval_metric = 'avg' if self.config.video_type.lower() == 'tvsum' else 'max'
-            # Read current split
-            split_file = f"../PGL-SUM/data/datasets/splits/{self.config.video_type.lower()}_splits.json"
-            with open(split_file) as f:
-                data = json.loads(f.read())
-                test_keys = data[self.config.split_index]["test_keys"]
-            # Dataset path
-            dataset_path = f"../PGL-SUM/data/datasets/{self.config.video_type}/eccv16_dataset_{self.config.video_type.lower()}_google_pool5.h5"
-            trained_model = PGL_SUM(input_size=1024, output_size=1024, num_segments=4, heads=8,
-                                fusion="add", pos_enc="absolute")
-            trained_model.load_state_dict(torch.load(join(model_path, model_file[-1])))
-            os.remove(join(model_path, model_file[-1]))
-            inference(trained_model, dataset_path, test_keys, eval_metric, self.writer, epoch_i)
-            
-            self.evaluate(epoch_i)
+            # # Model data
+            # model_path = f"../PGL-SUM/Summaries/PGL-SUM/exp1/{self.config.video_type}/models/split{self.config.split_index}/seed{self.config.seed}"
+            # model_file = sorted([f for f in listdir(model_path)])
+            # eval_metric = 'avg' if self.config.video_type.lower() == 'tvsum' else 'max'
+            # # Read current split
+            # split_file = f"../PGL-SUM/data/datasets/splits/{self.config.video_type.lower()}_splits.json"
+            # with open(split_file) as f:
+            #     data = json.loads(f.read())
+            #     test_keys = data[self.config.split_index]["test_keys"]
+            # # Dataset path
+            # dataset_path = f"../PGL-SUM/data/datasets/{self.config.video_type}/eccv16_dataset_{self.config.video_type.lower()}_google_pool5.h5"
+            # trained_model = PGL_SUM(input_size=1024, output_size=1024, num_segments=4, heads=8,
+            #                     fusion="add", pos_enc="absolute")
+            # trained_model.load_state_dict(torch.load(join(model_path, model_file[-1])))
+            # # os.remove(join(model_path, model_file[-1]))
+            # # f_score = inference(trained_model, dataset_path, test_keys, eval_metric, self.writer, epoch_i)
+            f_score = self.evaluate(epoch_i)
+            max_f_score = max(max_f_score, f_score)
+            if not os.path.exists(self.config.f_score_dir):
+                os.makedirs(self.config.f_score_dir)
+            with open (self.config.f_score_dir.joinpath('max_f_score.txt'), 'w') as file:
+                file.write ("seed" + str(self.config.seed) + ': ' + str(max_f_score))
 
             
 
@@ -155,17 +157,19 @@ class Solver(object):
 
         weights_save_path = self.config.score_dir.joinpath("weights.h5")
         out_scores_dict = {}
-        for frame_features, video_name in tqdm(self.test_loader, desc='Evaluate', ncols=80, leave=False):
+        video_fscores = []
+        eval_metric = 'avg' if self.config.video_type.lower() == 'tvsum' else 'max'
+        for frame_features, video_name, user_summary, sb, n_frames, positions in tqdm(self.test_loader, desc='Evaluate', ncols=80, leave=False):
             # [seq_len, input_size]
             frame_features = frame_features.view(-1, self.config.input_size).to(self.config.device)
-
             with torch.no_grad():
                 scores, attn_weights = self.model(frame_features)  # [1, seq_len]
                 scores = scores.squeeze(0).cpu().numpy().tolist()
                 attn_weights = attn_weights.cpu().numpy()
-
+                summary = generate_summary([sb], [scores], [n_frames], [positions])[0]
+                f_score = evaluate_summary(summary, user_summary, eval_metric)
                 out_scores_dict[video_name] = scores
-
+                video_fscores.append(f_score)
             if not os.path.exists(self.config.score_dir):
                 os.makedirs(self.config.score_dir)
 
@@ -179,7 +183,8 @@ class Solver(object):
             if save_weights:
                 with h5py.File(weights_save_path, 'a') as weights:
                     weights.create_dataset(f"{video_name}/epoch_{epoch_i}", data=attn_weights)
-
+        self.writer.update_loss(np.mean(video_fscores), epoch_i, 'F-score_epoch')
+        return np.mean(video_fscores)
 
 if __name__ == '__main__':
     pass

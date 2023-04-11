@@ -26,7 +26,8 @@ class VideoData(Dataset):
         elif 'tvsum' in self.splits_filename[0]:
             self.filename = self.datasets[1]
         hdf = h5py.File(self.filename, 'r')
-        self.list_frame_features, self.list_gtscores = [], []
+        self.list_frame_features, self.list_gtscores, self.list_user_summary = [], [], []
+        self.list_sb, self.list_n_frames, self.list_positions = [], [], []
 
         with open(self.splits_filename[0]) as f:
             data = json.loads(f.read())
@@ -38,9 +39,18 @@ class VideoData(Dataset):
         for video_name in self.split[self.mode + '_keys']:
             frame_features = torch.Tensor(np.array(hdf[video_name + '/features']))
             gtscore = torch.Tensor(np.array(hdf[video_name + '/gtscore']))
+            user_summary = np.array(hdf[f"{video_name}/user_summary"])
+            sb = np.array(hdf[f"{video_name}/change_points"])
+            n_frames = np.array(hdf[f"{video_name}/n_frames"])
+            positions = np.array(hdf[f"{video_name}/picks"])
 
             self.list_frame_features.append(frame_features)
             self.list_gtscores.append(gtscore)
+            self.list_user_summary.append(user_summary)
+            self.list_sb.append(sb)
+            self.list_n_frames.append(n_frames)
+            self.list_positions.append(positions)
+
 
         hdf.close()
 
@@ -59,11 +69,14 @@ class VideoData(Dataset):
         video_name = self.split[self.mode + '_keys'][index]
         frame_features = self.list_frame_features[index]
         gtscore = self.list_gtscores[index]
-
+        user_summary = self.list_user_summary[index]
+        sb = self.list_sb[index]
+        n_frames = self.list_n_frames[index]
+        positions = self.list_positions[index]
         if self.mode == 'test':
-            return frame_features, video_name
+            return frame_features, video_name, user_summary, sb, n_frames, positions
         else:
-            return frame_features, gtscore
+            return frame_features, gtscore, user_summary, sb, n_frames, positions
 
 
 def get_loader(mode, video_type, split_index):
