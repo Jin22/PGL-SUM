@@ -24,7 +24,7 @@ def str2bool(v):
 class Config(object):
     def __init__(self, **kwargs):
         """Configuration Class: set kwargs as class attributes with setattr"""
-        self.log_dir, self.score_dir, self.save_dir, self.f_score_dir = None, None, None, None
+        self.log_dir, self.score_dir, self.save_dir, self.f_score_dir, self.test_f_score_dir = None, None, None, None, None
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -40,7 +40,7 @@ class Config(object):
         self.score_dir = save_dir.joinpath(video_type, 'results/split' + str(self.split_index), 'seed' + str(self.seed))
         self.save_dir = save_dir.joinpath(video_type, 'models/split' + str(self.split_index), 'seed' + str(self.seed))
         self.f_score_dir = save_dir.joinpath(video_type, 'best_f_score/split' + str(self.split_index))
-    
+        self.test_f_score_dir = save_dir.joinpath(video_type, 'test_f_score/split' + str(self.split_index))
     def __repr__(self):
         """Pretty-print configurations in alphabetical order"""
         config_str = 'Configurations\n'

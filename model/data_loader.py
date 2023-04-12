@@ -18,7 +18,7 @@ class VideoData(Dataset):
         self.name = video_type.lower()
         self.datasets = ['../PGL-SUM/data/datasets/SumMe/eccv16_dataset_summe_google_pool5.h5',
                          '../PGL-SUM/data/datasets/TVSum/eccv16_dataset_tvsum_google_pool5.h5']
-        self.splits_filename = ['../PGL-SUM/data/datasets/splits/' + self.name + '_splits.json']
+        self.splits_filename = ['../PGL-SUM/data/datasets/splits/' + '622' + self.name + '_val_splits.json']
         self.split_index = split_index  # it represents the current split (varies from 0 to 4)
 
         if 'summe' in self.splits_filename[0]:
@@ -73,7 +73,7 @@ class VideoData(Dataset):
         sb = self.list_sb[index]
         n_frames = self.list_n_frames[index]
         positions = self.list_positions[index]
-        if self.mode == 'test':
+        if (self.mode == 'test') or (self.mode == 'val'):
             return frame_features, video_name, user_summary, sb, n_frames, positions
         else:
             return frame_features, gtscore, user_summary, sb, n_frames, positions
