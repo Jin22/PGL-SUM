@@ -44,6 +44,9 @@ class Solver(object):
                              heads=self.config.heads,
                              fusion=self.config.fusion,
                              pos_enc=self.config.pos_enc).to(self.config.device)
+        if torch.cuda.is_available():
+            self.model.to(self.config.device)
+
         if self.config.init_type is not None:
             self.init_weights(self.model, init_type=self.config.init_type, init_gain=self.config.init_gain)
 
@@ -164,16 +167,24 @@ class Solver(object):
 
         ### Inference part
         test_f_score_dict = {}
-        eval_metric = 'avg' if self.config.video_type.lower() == 'tvsum' else 'max'
+
+        ## I used avg for YT8M dataset for now.
+        eval_metric = 'max' if self.config.video_type.lower() == 'summe' else 'avg'
         # Read current split
         ### TODO
         # Change this to 622splits later on
-        split_file = f"../PGL-SUM/data/datasets/splits/{self.config.video_type.lower()}_val_splits.json"
+        if (self.config.video_type.lower() != 'yt8m_sum'):
+            split_file = f"../PGL-SUM/data/datasets/splits/622{self.config.video_type.lower()}_val_splits.json"
+        else:    
+            split_file = f"../PGL-SUM/data/datasets/splits/{self.config.video_type.lower()}_split_27892_2000_20000.json"
         with open(split_file) as f:
             data = json.loads(f.read())
             test_keys = data[self.config.split_index]["test_keys"]
         # Dataset path
-        dataset_path = f"../PGL-SUM/data/datasets/{self.config.video_type}/eccv16_dataset_{self.config.video_type.lower()}_google_pool5.h5"
+        if (self.config.video_type.lower() != 'yt8m_sum'):
+            dataset_path = f"../PGL-SUM/data/datasets/{self.config.video_type}/eccv16_dataset_{self.config.video_type.lower()}_google_pool5.h5"
+        else:
+            dataset_path = "../../summarization_dataset/yt8m_sum_all.h5"
         trained_model = PGL_SUM(input_size=1024, output_size=1024, num_segments=4, heads=8,
                                 fusion="add", pos_enc="absolute")
         trained_model.load_state_dict(torch.load(join(model_path, model_file[-1])))
@@ -197,7 +208,7 @@ class Solver(object):
         weights_save_path = self.config.score_dir.joinpath("weights.h5")
         out_scores_dict = {}
         video_fscores = []
-        eval_metric = 'avg' if self.config.video_type.lower() == 'tvsum' else 'max'
+        eval_metric = 'max' if self.config.video_type.lower() == 'summe' else 'avg'
         for frame_features, video_name, user_summary, sb, n_frames, positions in tqdm(self.val_loader, desc='Evaluate', ncols=80, leave=False):
             # [seq_len, input_size]
             frame_features = frame_features.view(-1, self.config.input_size).to(self.config.device)
@@ -205,8 +216,13 @@ class Solver(object):
                 scores, attn_weights = self.model(frame_features)  # [1, seq_len]
                 scores = scores.squeeze(0).cpu().numpy().tolist()
                 attn_weights = attn_weights.cpu().numpy()
-                summary = generate_summary([sb], [scores], [n_frames], [positions])[0]
-                f_score = evaluate_summary(summary, user_summary, eval_metric)
+                if (self.config.video_type != 'yt8m_sum'):
+                    summary = generate_summary([sb], [scores], [n_frames], [positions])[0]
+                    f_score = evaluate_summary(summary, user_summary, eval_metric)
+                else:
+                    summary = generate_summary([sb], [scores], [n_frames], [positions])[0]
+                    user_summary = np.expand_dims(user_summary, axis=0)
+                    f_score = evaluate_summary(summary, user_summary, eval_metric)
                 out_scores_dict[video_name] = scores
                 video_fscores.append(f_score)
             if not os.path.exists(self.config.score_dir):

@@ -20,7 +20,6 @@ if __name__ == '__main__':
     solver = Solver(config, train_loader, val_loader, test_loader)
 
     solver.build()
-    solver.to(config.device)
     solver.evaluate(-1)	 # evaluates the summaries using the initial random weights of the network
     solver.train()
 
